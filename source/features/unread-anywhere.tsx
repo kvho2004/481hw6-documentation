@@ -1,4 +1,4 @@
-import {$, $$optional} from 'select-dom/strict.js';
+import {$} from 'select-dom/strict.js';
 import {messageRuntime} from 'webext-msg';
 import React from 'dom-chef';
 import * as pageDetect from 'github-url-detection';
@@ -8,45 +8,84 @@ import features from '../feature-manager.js';
 import {registerHotkey} from '../github-helpers/hotkey.js';
 import onetime from '../helpers/onetime.js';
 import showToast from '../github-helpers/toast.js';
-import {fetchDomUncached} from '../helpers/fetch-dom.js';
-import pluralize from '../helpers/pluralize.js';
-import {removeLinkToPRFilesTab} from './pr-notification-link.js';
+// import {fetchDomUncached} from '../helpers/fetch-dom.js';
+// import pluralize from '../helpers/pluralize.js';
+// import {removeLinkToPRFilesTab} from './pr-notification-link.js';
 import observe from '../helpers/selector-observer';
 import {getClasses, isSmallDevice} from '../helpers/dom-utils';
 
-const limit = 5;
+// const limit = 5;
 
 async function openUnreadNotifications(event?: React.MouseEvent): Promise<void> {
+	console.log('openUnreadNotifications called!', event);
 	if (event?.target instanceof HTMLButtonElement) {
 		// Hide the tooltip
 		event.target.blur();
 		event.target.disabled = true; // Prevent multiple clicks
 	}
 
-	await showToast(async updateToast => {
-		const page = await fetchDomUncached('/notifications?query=is%3Aunread');
+	// await showToast(async updateToast => {
+	// 	const page = await fetchDomUncached('/notifications?query=is%3Aunread');
 
-		const notifications = $$optional('a.js-navigation-open', page);
-		if (notifications.length === 0) {
+	// 	const notifications = $$optional('a.js-navigation-open', page);
+	// 	if (notifications.length === 0) {
+	// 		updateToast('No unread notifications');
+	// 		return;
+	// 	}
+
+	// 	updateToast('Opening…');
+	// 	const urls = notifications.slice(0, limit).map(notification => {
+	// 		removeLinkToPRFilesTab(notification); // Internally limited to PR Files links
+	// 		return notification.href;
+	// 	});
+
+	// 	await messageRuntime({
+	// 		openUrls: urls,
+	// 	});
+
+	// 	if (notifications.length > limit) {
+	// 		updateToast(`Opened the last ${limit} unread notifications`);
+	// 	} else {
+	// 		updateToast(pluralize(urls.length, '$$ notification') + ' opened');
+	// 		// Update the UI too
+	// 		$('.AppHeader-button--hasIndicator').classList.remove('AppHeader-button--hasIndicator');
+	// 	}
+	// }, {
+	// 	message: 'Loading notifications…',
+	// 	doneMessage: false,
+	// }).finally(() => {
+	// 	if (event?.target instanceof HTMLButtonElement) {
+	// 		event.target.disabled = false;
+	// 	}
+	// });
+	await showToast(async updateToast => {
+		updateToast('Loading notifications…');
+		
+		// Send message to background script to fetch and open notifications
+		// This way, even if the tab closes, the background script continues
+		const result = await messageRuntime({
+			fetchAndOpenUnreadNotifications: undefined,
+		}) as {
+			success: boolean;
+			count: number;
+			total?: number;
+			message: string;
+		};
+
+		if (!result.success) {
+			updateToast(result.message);
+			return;
+		}
+
+		if (result.count === 0) {
 			updateToast('No unread notifications');
 			return;
 		}
 
-		updateToast('Opening…');
-		const urls = notifications.slice(0, limit).map(notification => {
-			removeLinkToPRFilesTab(notification); // Internally limited to PR Files links
-			return notification.href;
-		});
-
-		await messageRuntime({
-			openUrls: urls,
-		});
-
-		if (notifications.length > limit) {
-			updateToast(`Opened the last ${limit} unread notifications`);
-		} else {
-			updateToast(pluralize(urls.length, '$$ notification') + ' opened');
-			// Update the UI too
+		updateToast(result.message);
+		
+		// Update the UI to remove the unread indicator if all notifications were opened
+		if (result.count === result.total) {
 			$('.AppHeader-button--hasIndicator').classList.remove('AppHeader-button--hasIndicator');
 		}
 	}, {

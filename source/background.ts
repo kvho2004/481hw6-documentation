@@ -39,6 +39,55 @@ handleMessages({
 			});
 		}
 	},
+	
+	// NEW HANDLER: Fetch and open unread notifications
+	async fetchAndOpenUnreadNotifications(_: void, {tab}: chrome.runtime.MessageSender) {
+		const limit = 5;
+		try {
+			const response = await fetch('https://github.com/notifications?query=is%3Aunread');
+			const html = await response.text();
+			// Parse HTML to extract notification links
+			const parser = new DOMParser();
+			const doc = parser.parseFromString(html, 'text/html');
+			const notifications = Array.from(doc.querySelectorAll('a.js-navigation-open'));
+			if (notifications.length === 0) {
+				return {
+					success: true,
+					count: 0,
+					message: 'No unread notifications'
+				};
+			}
+			// Extract URLs (limit to 5)
+			const urls = notifications
+				.slice(0, limit)
+				.map(link => (link as HTMLAnchorElement).href)
+				.filter(url => url && !url.includes('/files')); // Remove PR Files tab links	
+			// Open tabs
+			for (const [index, url] of urls.entries()) {
+				void chrome.tabs.create({
+					url,
+					index: tab!.index + index + 1,
+					active: false,
+				});
+			}	
+			return {
+				success: true,
+				count: urls.length,
+				total: notifications.length,
+				message: notifications.length > limit 
+					? `Opened the last ${limit} unread notifications`
+					: `${urls.length} notification${urls.length !== 1 ? 's' : ''} opened`
+			};
+			
+		} catch (error) {
+			console.error('Failed to fetch notifications:', error);
+			return {
+				success: false,
+				count: 0,
+				message: 'Failed to fetch notifications'
+			};
+		}
+	},
 	async closeTab(_: any, {tab}: chrome.runtime.MessageSender) {
 		void chrome.tabs.remove(tab!.id!);
 	},
